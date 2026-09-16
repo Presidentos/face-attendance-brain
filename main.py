@@ -2,8 +2,16 @@ from fastapi import FastAPI, File, UploadFile, Form
 from deepface import DeepFace
 import shutil
 import os
+import gspread
+import numpy as np
+from datetime import datetime
 
 app = FastAPI()
+
+# Connect to Google Sheets using the secret file we set up in Render
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1-8NFZYq5ZwOTTAzezRPBYZvP9HdEwz_Modg7tV0gPPw/edit"
+gc = gspread.service_account(filename='credentials.json')
+sheet = gc.open_by_url(SHEET_URL).sheet1
 
 @app.get("/")
 def read_root():
@@ -20,17 +28,18 @@ async def register_face(name: str = Form(...), file: UploadFile = File(...)):
         # Extract the facial embedding using DeepFace
         embedding_objs = DeepFace.represent(img_path=file_location, model_name="Facenet", enforce_detection=False)
         embedding = embedding_objs[0]["embedding"]
+        embedding_str = ",".join(map(str, embedding))
         
-        # Clean up the temp file
+        # Create ID, Date, and Time
+        face_id = str(int(datetime.now().timestamp()))
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        time_str = datetime.now().strftime("%H:%M:%S")
+        
+        # Save to Google Sheet
+        sheet.append_row([face_id, name, embedding_str, "Pending Upload", date_str, time_str, "Registered"])
+        
         os.remove(file_location)
-        
-        # We will connect this to Google Sheets in the next step!
-        return {
-            "status": "success",
-            "name": name,
-            "message": "Face registered successfully!",
-            "embedding_preview": embedding[:5]
-        }
+        return {"status": "success", "message": f"{name} registered successfully!"}
     except Exception as e:
         if os.path.exists(file_location):
             os.remove(file_location)
@@ -46,17 +55,35 @@ async def recognize_face(file: UploadFile = File(...)):
     try:
         # Generate embedding for the new image
         embedding_objs = DeepFace.represent(img_path=file_location, model_name="Facenet", enforce_detection=False)
-        new_embedding = embedding_objs[0]["embedding"]
+        new_embedding = np.array(embedding_objs[0]["embedding"])
         
-        # Clean up the temp file
+        # Get all records from the sheet
+        records = sheet.get_all_records()
+        
+        best_match = None
+        min_distance = float('inf')
+        
+        # Compare against everyone in the database
+        for row in records:
+            if row.get('Embedding'):
+                stored_embedding = np.array([float(x) for x in row['Embedding'].split(',')])
+                distance = np.linalg.norm(new_embedding - stored_embedding)
+                if distance < min_distance:
+                    min_distance = distance
+                    best_match = row
+        
         os.remove(file_location)
         
-        # We will compare this against Google Sheets in the next step!
-        return {
-            "status": "success",
-            "message": "Face analyzed successfully!",
-            "embedding_preview": new_embedding[:5]
-        }
+        # Threshold for matching (10.0 is a safe starting point for Facenet)
+        if best_match and min_distance < 10.0:
+            # Log attendance
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            time_str = datetime.now().strftime("%H:%M:%S")
+            sheet.append_row([best_match['Face ID'], best_match['Name'], "", "", date_str, time_str, "Present"])
+            return {"status": "success", "name": best_match['Name'], "face_id": best_match['Face ID']}
+        else:
+            return {"status": "error", "message": "Face not recognized."}
+            
     except Exception as e:
         if os.path.exists(file_location):
             os.remove(file_location)
