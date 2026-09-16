@@ -5,12 +5,14 @@ import os
 import gspread
 import numpy as np
 from datetime import datetime
+import json
 
 app = FastAPI()
 
-# Connect to Google Sheets using the secret file we set up in Render
+# Connect to Google Sheets using the environment variable we will set in Kubeletto
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1-8NFZYq5ZwOTTAzezRPBYZvP9HdEwz_Modg7tV0gPPw/edit"
-gc = gspread.service_account(filename='credentials.json')
+creds_json = json.loads(os.environ['GOOGLE_CREDENTIALS'])
+gc = gspread.service_account_from_dict(creds_json)
 sheet = gc.open_by_url(SHEET_URL).sheet1
 
 @app.get("/")
