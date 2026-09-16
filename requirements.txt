@@ -1,8 +1,10 @@
 fastapi
 uvicorn
-deepface
 python-multipart
 gspread
 oauth2client
 google-auth
-tf-keras
+deepface==0.0.93
+tensorflow==2.15.0
+tf-keras==2.15.0
+numpy==1.26.4
