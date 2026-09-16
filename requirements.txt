@@ -1,1 +1,8 @@
-
+fastapi
+uvicorn
+deepface
+python-multipart
+gspread
+oauth2client
+google-auth
+tf-keras
